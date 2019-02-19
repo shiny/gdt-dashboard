@@ -1,17 +1,14 @@
 const path = require('path')
 const webpack = require('webpack')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
-const ChromeReloadPlugin  = require('wcer')
 const { resolve, page, assetsPath } = require('./util')
+const { VueLoaderPlugin } = require('vue-loader')
 
 module.exports = {
   entry: {
     popup: resolve('src/popup'),
     options: resolve('src/options'),
-    test: resolve('src/test'),
-    content: resolve('src/content'), 
-    background: resolve('src/background'),
-    inject: resolve('src/content/inject'),
+    test: resolve('src/main')
   },
   output: {
     path: resolve('dist'),
@@ -105,6 +102,7 @@ module.exports = {
     extensions: ['*', '.js', '.vue', '.json']
   },
   plugins: [
+    new VueLoaderPlugin(),
     page({
       title: '打开中',
       name: 'popup',
@@ -119,12 +117,8 @@ module.exports = {
       {
         from: resolve('static')
       }
-    ]),
-     new ChromeReloadPlugin({
-       manifest: resolve('src/manifest.js')
-    })
+    ])
   ],
-  performance: {
-    hints: false
+  optimization: {
   }
 }

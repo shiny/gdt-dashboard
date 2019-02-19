@@ -1,11 +1,12 @@
 <template>
   <div id="app">
-    <img src="../assets/logo.png">
-    <h1>{{ msg }}</h1>
+    <img @click="download" src="../assets/logo.png">
   </div>
 </template>
 
 <script>
+import browser from "webextension-polyfill"
+const FileSaver = require('file-saver');
 export default {
   name: 'app',
   data () {
@@ -13,10 +14,37 @@ export default {
       msg: 'This is popup page !'
     }
   },
+  methods: {
+    download() {
+      const xlsx = require('better-xlsx');
+      const file = new xlsx.File();
+      const sheet = file.addSheet('Sheet1');
+      const row = sheet.addRow();
+    
+      const cell = row.addCell();
+      cell.value = 'I am a cell!';
+      cell.hMerge = 2;
+      cell.vMerge = 1;
+    
+      const style = new xlsx.Style();
+      style.fill.patternType = 'solid';
+      style.fill.fgColor = '00FF0000';
+      style.fill.bgColor = 'FF000000';
+      style.align.h = 'center';
+      style.align.v = 'center';
+      cell.style = style;
+      file
+        .saveAs('blob')
+        .then(function(content) {
+          saveAs(content, "example.xlsx");
+        });
+    }
+  },
   mounted() {
-    chrome.tabs.create({
-      url: 'pages/options.html',
+    browser.tabs.create({
+      url: '/pages/options.html',
     });
+
   }
 }
 </script>

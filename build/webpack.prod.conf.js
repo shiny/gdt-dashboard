@@ -1,27 +1,17 @@
 const path = require('path')
 const webpack = require('webpack')
 const merge = require('webpack-merge')
-const CopyWebpackPlugin = require('copy-webpack-plugin')
-const CleanWebpackPlugin = require('clean-webpack-plugin')
 const baseConf = require('./webpack.base.conf')
-const { resolve } = require('./util')
-
+const MinifyPlugin = require("babel-minify-webpack-plugin")
 
 module.exports = merge(baseConf, {
-  devtool: '#source-map',
+  watch: true,
   plugins: [
-    new webpack.DefinePlugin({
-      'process.env.NODE_ENV': '"production"'
-    }),
-    new CleanWebpackPlugin(['dist/*.*']),
-    new webpack.optimize.UglifyJsPlugin({
-      sourceMap: false,
-      compress: {
-        warnings: false
-      }
-    }),
-    new webpack.LoaderOptionsPlugin({
-      minimize: true
+    new MinifyPlugin({
+
+    }, {
+      comments: false
     })
-  ]
+  ],
+  mode: 'production'
 })

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import cookies from './cookies';
 import neatCsv from 'neat-csv';
+import XLSX from 'xlsx';
 
 class Gdt {
 
@@ -29,11 +30,15 @@ class Gdt {
     const url = `https://a.weixin.qq.com/cgi-bin/agency/check_login?g_tk=${token}&_=${Date.now()}`;
     const result = await axios.get(url);
     if(result.status !== 200) {
-      throw new Error(`请检查广点通登录状态！`);
+      const error =  new Error(`请检查广点通登录状态`);
+      error.name = 'https://a.weixin.qq.com/';
+      throw error;
     }
     const { ret, msg, data } = result.data;
     if(ret > 0) {
-      throw new Error(`请检查广点通登录状态: ${msg}`);
+      const error =  new Error(`请检查广点通登录状态: ${msg}`);
+      error.name = 'https://a.weixin.qq.com/';
+      throw error;
     }
     return data[0];
   }
@@ -43,8 +48,14 @@ class Gdt {
     if (!date) {
       date = new Date();
     }
+    // date.setHours(0, 0, 0, 0);
     const time = date.getTime() / 1000;
-    return time - (time % 86400);
+    console.log(time);
+    return parseInt(time);
+  }
+
+  ab2str(buffer) {
+    return new Buffer(buffer, 'binary').toString()
   }
 
   // 朋友圈广告
@@ -53,9 +64,15 @@ class Gdt {
     const token = await this.getCSRFToken();
     const url = `https://a.weixin.qq.com/cgi-bin/agency/get_report?args={%22query_index%22:[%22paid%22,%22exp_pv%22,%22clk_pv%22,%22ctr%22,%22comindex%22,%22cpa%22],%22agency_id%22:%22spid37a67b6f53%22,%22begin_time%22:${time},%22end_time%22:${time},%22report_type%22:2,%22dimension%22:1,%22time_level%22:3,%22contract_flag%22:[],%22product_type%22:[],%22adpos%22:[],%22secondcategoryid%22:[],%22order_by_field%22:[{%22order_by%22:%22ds%22,%22ascending%22:0}],%22page_info%22:{%22page%22:1,%22page_size%22:10}}&g_tk=${token}&download=1&report_tab=ader_sns`;
     const result = await axios.get(url, {
-      responseType: 'text'
+      responseType: 'arraybuffer'
     });
-    return result.data;
+    if(result.headers['content-disposition'].endsWith('.csv')) {
+      return this.ab2str(result.data);
+    } else {
+      const data = new Uint8Array(result.data);
+      const workbook = XLSX.read(data, {type:"array"});
+      return XLSX.utils.sheet_to_csv(workbook.Sheets['数据统计']);
+    }
   }
 
   //公众号广告
@@ -64,15 +81,22 @@ class Gdt {
     const token = await this.getCSRFToken();
     const url = `https://a.weixin.qq.com/cgi-bin/agency/get_report?args={%22query_index%22:[%22paid%22,%22exp_pv%22,%22clk_pv%22,%22ctr%22,%22comindex%22,%22cpa%22],%22agency_id%22:%22spid37a67b6f53%22,%22begin_time%22:${time},%22end_time%22:${time},%22report_type%22:1,%22dimension%22:1,%22time_level%22:3,%22contract_flag%22:[],%22product_type%22:[],%22adpos%22:[],%22secondcategoryid%22:[],%22order_by_field%22:[{%22order_by%22:%22ds%22,%22ascending%22:0}],%22page_info%22:{%22page%22:1,%22page_size%22:10}}&g_tk=${token}&download=1&report_tab=ader_mp`;
     const result = await axios.get(url, {
-      responseType: 'text'
+      responseType: 'arraybuffer'
     });
-    return result.data;
+    if(result.headers['content-disposition'].endsWith('.csv')) {
+      return this.ab2str(result.data);
+    } else {
+      const data = new Uint8Array(result.data);
+      const workbook = XLSX.read(data, {type:"array"});
+      return XLSX.utils.sheet_to_csv(workbook.Sheets['数据统计']);
+    }
   }
 
   // 获取合并后的广告
   async loadAd() {
     const [ momentAdCSV, mpAdCSV ] = await Promise.all([ this.loadMotionAd(), this.loadMpAd() ]);
     const [ momentAds, mpAds ] = await Promise.all([ neatCsv(momentAdCSV), neatCsv(mpAdCSV) ]);
+console.log(momentAds);
     const ads = momentAds;
     const mpAdsObj = {};
     for(let ad of mpAds) {
@@ -94,7 +118,6 @@ class Gdt {
     for(let gh_id of Object.keys(mpAdsObj)) {
       resultData.push(this.mergeAds({}, mpAdsObj[gh_id]));
     }
-    // console.log(resultData);
     return resultData;
   }
 

@@ -1,25 +1,19 @@
 class Cookies {
 
   async get({ url, name }) {
-    const cookies = await this.getAll({
+    const cookie = await this.getAll({
       url,
       name
     });
-    if (cookies.length > 0) {
-      return cookies[0];
-    } else {
-      return false;
-    }
+    return cookie;
   }
 
   getAll({ url, name }) {
     return new Promise((resolve, reject) => {
-      chrome.cookies.getAll({
+      chrome.cookies.get({
         url,
         name
-      }, cookies => {
-        resolve(cookies);
-      })
+      }, resolve)
     });
   }
 }

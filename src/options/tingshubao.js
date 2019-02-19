@@ -3,13 +3,25 @@ import axios from 'axios';
 import XLSX from 'xlsx';
 
 class Tingshubao {
-
   async initRate() {
+    if(Array.isArray(this.tablePercert) && this.tablePercert.length > 0) {
+      return this.tablePercert;
+    }
     const url = `https://college.xiaoxiafm.com/mp/goods/list`;
-    const res = await axios.get(url);
+    let res;
+    try {
+      res = await axios.get(url);
+    } catch(e) {
+      console.log(e);
+      const error =  new Error(`请检查听书宝登录状态`);
+      error.name = 'https://college.xiaoxiafm.com/';
+      throw error;
+    }
     let goods_list = [];
     if(!res.data || res.data.code !== 0) {
-      throw new Error(`请检查听书宝登录状态`);
+      const error =  new Error(`请检查听书宝登录状态`);
+      error.name = 'https://college.xiaoxiafm.com/';
+      throw error;
     }
     if(res.data.data) {
       goods_list = res.data.data.goods_list;
@@ -28,44 +40,76 @@ class Tingshubao {
     return this.tablePercert[productName];
   }
   
-  async downloadTingshubao({ date = null, timestamp = 0 }) {
+  async downloadTingshubao({ date = null }) {
     if (!date) {
       date = new Date();
     }
-    if (timestamp === 0) {
-      timestamp = (new Date).getTime();
-    }
-    
-    const start = this.dateToUrl(date);
-    const startUrl = `https://college.xiaoxiafm.com/mp/source/download?start_time=${start}&end_time=${start}&timestamp=${timestamp}`;
+    const dateUrl = this.dateToUrl(date);
+    const startUrl = `https://college.xiaoxiafm.com/mp/source/download_api?start_time=${dateUrl}&end_time=${dateUrl}`;
 
     let shouldContinue = false;
-    let downloadUrl = '';
+    let orders = [];
     do {
       const res = await axios.get(startUrl);
       if(res.status !== 200) {
         throw new Error(`请检查听书宝登录状态！`);
       }
       const { data, code } = res.data;
-      if(code === 0 && data.process === 'downloading') {
+      if(code === 0 && data.process === 'calculating') {
         shouldContinue = true;
-        downloadUrl = '';
       } else if(code === 0 && data.process === 'done') {
         shouldContinue = false;
-        downloadUrl = data.url;
+        orders = data.source_list;
         break;
       } else {
         console.error(`听书宝下载返回了未知的数据`, res.data);
         throw new Error(`听书宝数据导出异常，请检查`);
       }
       // 听书宝使用的是短轮询
-      const sleepSeconds = 2;
+      const sleepSeconds = 3;
       await this.sleep(sleepSeconds);
     } while(shouldContinue);
-    return await this.exportTingshubao({ url: downloadUrl });
+    return this.exportTingshubao({ orders });
   }
 
-  async exportTingshubao({ url }) {
+  async exportTingshubao({ orders }) {
+    // const orders = [{
+    //   "id": 14974,
+    //   "name": "女人说话有一手-ale-课程2",
+    //   "goods_name": "180天读书计划",
+    //   "price": "99.00",
+    //   "url": "https://wxf4aa16343cfcc434.college.xiaoxiafm.com/event/14974/?skin=deposit&goods_id=1",
+    //   "uv": 0,
+    //   "click_rate": "0.00",
+    //   "pay_rate": "0.00",
+    //   "not_pay_count": 0,
+    //   "not_pay_fee": 0.0,
+    //   "pay_count": 0,
+    //   "pay_fee": 0.0,
+    //   "create_time": "2018-11-27"
+    // }]
+    return orders.map(order => {
+      const rate = this.getRate(order.goods_name);
+      const rowPrice = parseFloat(order.pay_fee);
+      return {
+        rate,
+        rowPrice,
+        paid: parseInt(rowPrice * 100) * rate / 100,
+        渠道ID: order.id,
+        渠道昵称: order.name,
+        产品名称: order.goods_name,
+        价格: order.price,
+        推广链接: order.url,
+        uv: order.uv,
+        点击转化率: order.click_rate,
+        付费转化率: order.pay_rate,
+        未支付数: order.not_pay_count,
+        未支付金额: order.not_pay_fee,
+        支付人数: order.pay_count,
+        支付金额: order.pay_fee,
+        创建时间: order.create_time
+      }
+    });
     const result = await axios.get(url, {
       responseType: 'arraybuffer'
     });
@@ -75,54 +119,13 @@ class Tingshubao {
 
     const resultData = XLSX.utils.sheet_to_json(workbook.Sheets.Sheet).map(row => {
       const rate = this.getRate(row.产品名称);
-      const paid = parseInt(row.支付金额.replace('.', '')) * rate / 100;
+      const rowPrice = parseFloat(row.支付金额);
+      const paid = parseInt(rowPrice * 100) * rate / 100;
       row.paid = paid;
       return row;
     });
+    
     return resultData;
-
-    let idCell, nameCell, payCell, productCell;
-
-    console.log();
-    for(let key in workbook.Sheets.Sheet) {
-      if(key.startsWith('!')) {
-        continue;
-      }
-      const row = workbook.Sheets.Sheet[key];
-      const [ , cellCode , cellPos ] = key.match(/([A-Z]+)([0-9]+)/);
-      if(cellPos === '1') {
-        switch(row.v) {
-          case '渠道ID':
-            idCell = cellCode;
-            break;
-          case '渠道昵称':
-            nameCell = cellCode
-            break;
-          case '支付金额':
-            payCell = cellCode;
-            break;
-          case '产品名称':
-            productCell = cellCode;
-            break;
-        }
-        continue;
-      }
-      switch(cellCode) {
-        case idCell:
-          tingshubao[row.v] = {}
-        break;
-        case payCell:
-          const id = workbook.Sheets.Sheet[idCell+cellPos].v;
-          const product = workbook.Sheets.Sheet[productCell+cellPos].v;
-          const name = workbook.Sheets.Sheet[nameCell+cellPos].v;
-          const rate = this.getRate(product);
-          // 单位为分，分成比例未除100，所以最后的金额要 / 100
-          const paid = parseInt(row.v.replace('.', '')) * rate / 100;
-          Object.assign(tingshubao[id], { paid, name });
-        break;
-      }
-    }
-    return tingshubao;
   }
 
   dateToUrl(date) {
